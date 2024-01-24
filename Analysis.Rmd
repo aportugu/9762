@@ -23,14 +23,17 @@ library(readr)
 library(survminer)
 library(ggsurvfit)
 library(rms)
+library(gt)
+library(bstfun)
 ```
 
-## Join the data files
+## Read in the data
 ```{r}
 db1 = read_excel(path = "9762 data for analysis 1.23.24.xlsx", sheet = "Survival")
 
 dataset <- db1 %>%
   mutate(
+    dx_dt = ymd(dx_dt),
     infuse_dt = ymd(infuse_dt),
     birthdate = ymd(birthdate),
     dt_relapse = ymd(dt_relapse),
@@ -38,6 +41,7 @@ dataset <- db1 %>%
     Death.or.relapse.or.DLC = ymd(Death.or.relapse.or.DLC),
     Days.to.death.or.DLC = Death.or.DLC - infuse_dt,
     Days.to.death.or.relapse.or.DLC = Death.or.relapse.or.DLC - infuse_dt,
+    Days.from.dx.to.infusion = infuse_dt - dx_dt,
     Age = (infuse_dt-birthdate)/365
   )
 ```
@@ -47,24 +51,52 @@ dataset <- db1 %>%
 
 ## Table 1 reproduction
 ```{r}
-
 theme_gtsummary_compact()
+
 
 dataset %>%
   transmute(
     "Age (years)" = Age,
-    "Male sex" = ifelse(sex == "m",1,0)
+    "Female sex" = ifelse(sex == "f", 1, 0),
+    "Race" = recode(race, "asian" = "Asian", "white" = "White"),
+    "ECOG performance status" = ecog,
+    "Median time from diagnosis to CAR T cell therapy" = Days.from.dx.to.infusion/365,
+    "Disease subtype" = factor(subtype_category, levels = c("IgA", "IgG", "IgM", "Light chain", "Oligosecretory", "Primary plasma cell leukemia")),
+    "ISS disease stage at diagnosis" = iss,
+    "Revised ISS disease stage at diagnosis" = riss,
+    "ISS disease stage at enrollment" = iss_enrollment,
+    "Revised ISS disease stage at enrollment" = riss_enrollment,
+    #"High-risk cytogenetic abnormality at any time" = HRCA,
+    "t(4;14) any" = t414_any,
+    "t(14;16) any" = t1416_any,
+    "del(17p) any" = del17p_any,
+    "amp(1q) any" = amp1q_any,
+    "High bone marrow tumor burden" = ifelse(High.tumor.burden == 1, ">30%", "10-30%"),
+    "Extramedullary disease" = extramedullary,
+    "Circulating plasma cells at screening" = cpcs,
+    "Tumor BCMA expression (ABC)" = bcma_scrn,
+    "Number of previous antimyeoma regimens" = factor(case_when(
+      no_priortx <=6 ~ "4-6",
+      no_priortx >6 & no_priortx <=9 ~ "7-9",
+      no_priortx >9 ~ "10 or more"), levels = c("4-6", "7-9", "10 or more") ),
+    "Previous autologous HCT" = factor(case_when(
+      no_auto == 0 ~ "0",
+      no_auto == 1 ~ "1",
+      no_auto >1 ~ ">1"), levels = c("0","1",">1") ),
+    "Previous allogeneic HCT" = allo
   ) %>%
+  
   tbl_summary(
-    #by = "Product",
-    missing = "no",
+    missing = "ifany",
     statistic = list(
-      "Age (years)" ~"{median} ({min} to {max})",
-      all_continuous() ~ "{median} ({p25}, {p75})",
+      all_continuous() ~ "{median} ({min} to {max})",
       all_categorical() ~ "{n} ({p}%)"
     )
   ) %>%
-  bold_labels
+  bold_labels() %>%
+  add_variable_grouping(
+    "High-risk cytogenetic abnormality at any time" = c("t(4;14) any", "t(14;16) any", "del(17p) any", "amp(1q) any")
+  )
 
 ```
 
