@@ -1,0 +1,1180 @@
+---
+title: "9762 analysis"
+author: "Andrew Portuguese"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  distill::distill_article:
+    code_folding: true
+    toc: true
+    toc_float: true
+    self_contained: true
+---
+
+# Setup and data wrangling
+
+## Load necessary packages
+```{r, warning=FALSE}
+library(gtsummary)
+library(survival)
+library(readxl)
+library(dplyr)
+library(lubridate)
+library(readr)
+library(survminer)
+library(ggsurvfit)
+library(rms)
+```
+
+## Join the data files
+```{r}
+db1 = read_excel(path = "9762 data for analysis 1.23.24.xlsx", sheet = "Survival")
+
+dataset <- db1 %>%
+  mutate(
+    infuse_dt = ymd(infuse_dt),
+    birthdate = ymd(birthdate),
+    dt_relapse = ymd(dt_relapse),
+    Death.or.DLC = ymd(Death.or.DLC),
+    Death.or.relapse.or.DLC = ymd(Death.or.relapse.or.DLC),
+    Days.to.death.or.DLC = Death.or.DLC - infuse_dt,
+    Days.to.death.or.relapse.or.DLC = Death.or.relapse.or.DLC - infuse_dt,
+    Age = (infuse_dt-birthdate)/365
+  )
+```
+
+
+# Data tables
+
+## Table 1 reproduction
+```{r}
+
+theme_gtsummary_compact()
+
+dataset %>%
+  transmute(
+    "Age (years)" = Age,
+    "Male sex" = ifelse(sex == "m",1,0)
+  ) %>%
+  tbl_summary(
+    #by = "Product",
+    missing = "no",
+    statistic = list(
+      "Age (years)" ~"{median} ({min} to {max})",
+      all_continuous() ~ "{median} ({p25}, {p75})",
+      all_categorical() ~ "{n} ({p}%)"
+    )
+  ) %>%
+  bold_labels
+
+```
+
+
+
+# Survival analysis
+## Length of follow-up
+```{r}
+data1 = dataset %>%
+  mutate(
+    Reverse_death = ifelse(death == 1, 0,1)
+  )
+
+#quantile(prodlim(Hist(time = Real.days.DLC/30, Real.death )~1, data = data1, reverse = TRUE ) )
+
+
+reverse_km_OS <- survfit(Surv(Days.to.death.or.DLC/30, Reverse_death) ~ 1, data1)
+reverse_km_OS
+```
+## Create KM for OS and PFS
+```{r, warning=FALSE, message=FALSE}
+
+km_OS <- survfit(Surv(Days.to.death.or.DLC/30, death) ~ 1, data = dataset)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+) 
+
+OS$plot <- OS$plot + geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey") +  annotate("text", x = med_OS$median + 0.5, y = 0.54, label = paste(signif(med_OS$median, 2), "(95% CI, ", signif(med_OS$lower, 2), "to", signif(med_OS$upper, 2),")"), hjust = 0,  size = 5)
+OS
+km_OS
+summary(km_OS,times=c(12))
+
+km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse) ~ 1, data = dataset)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS$plot <- PFS$plot + geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey") +  annotate("text", x = med_PFS$median + 0.5, y = 0.54, label = paste(signif(med_PFS$median, 2), "(95% CI, ", signif(med_PFS$lower, 2), "to", signif(med_PFS$upper, 2),")"), hjust = 0,  size = 5)
+PFS
+km_PFS
+summary(km_PFS,times=c(12))
+```
+
+## PFS and OS on the same plot
+```{r}
+OS_EFS <- ggsurvplot_combine(list(km_PFS, km_OS),
+           data=db,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.3,
+           tables.theme = theme_cleantable(),
+           surv.median.line = "hv", # Specify median survival
+           ggtheme = theme_classic()+
+            theme(
+              axis.text.x = element_text(size = 12),  # Increase x-axis label font size
+              axis.text.y = element_text(size = 12),  # Increase y-axis label font size
+              axis.title.x = element_text(size = 14),  # Increase x-axis title font size
+              axis.title.y = element_text(size = 14),  # Increase y-axis title font size
+              plot.title = element_text(size = 12),    # Increase plot title font size
+              legend.text = element_text(size = 12),    # Increase legend text font size
+              legend.title = element_text(size = 12)    # Increase legend title font size
+            ),
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "PFS & OS (%)",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           #fun=formula,
+           legend.labs = c("PFS","OS"),
+           surv.scale = "percent",
+           censor=FALSE
+           )
+
+OS_EFS$plot <- OS_EFS$plot + 
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey") + 
+  geom_vline(xintercept = median(km_OS)[1], linetype = "dashed", color = "grey") + 
+  geom_vline(xintercept = median(km_PFS)[1], linetype = "dashed", color = "grey") + 
+  annotate("text", x = med_OS$median + 0.5, y = 0.85, label = paste(signif(med_OS$median, 2), "(", signif(med_OS$lower, 2), "-", signif(med_OS$upper, 2),")"), hjust = 0,  size = 5) +
+  annotate("text", x = med_PFS$median + 0.5, y = 0.95, label = paste(signif(med_PFS$median, 2), "(", signif(med_PFS$lower, 2), "-", signif(med_PFS$upper, 2),")"), hjust = 0,  size = 5)
+
+OS_EFS
+```
+
+
+
+
+
+## Create KM for DOR
+```{r, warning=FALSE, message=FALSE}
+
+
+km_DOR <- survfit(Surv((Days.to.death.or.relapse.or.DLC-28)/30, relapse) ~ 1, data = dataset)
+med_DOR <- surv_median(km_DOR)
+
+DOR <- ggsurvplot(km_DOR,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Duration of response",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+DOR$plot <- DOR$plot + geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey") +  annotate("text", x = med_DOR$median + 0.5, y = 0.54, label = paste(signif(med_DOR$median, 2), "(95% CI, ", signif(med_DOR$lower, 2), "to", signif(med_DOR$upper, 2),")"), hjust = 0,  size = 5)
+DOR
+km_DOR
+summary(km_DOR,times=c(12))
+```
+
+# Stratified survival analysis
+## Create KM for OS and PFS, stratify by HRCA
+```{r, warning=FALSE, message=FALSE}
+
+km_OS <- survfit(Surv(Days.to.death.or.DLC/30, death) ~ HRCA, data = dataset)
+km_OS
+
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black"),
+           legend.labs = c("Standard","High risk")
+) 
+
+#OS$plot <- OS$plot + geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey") +  annotate("text", x = med_OS$median + 0.5, y = 0.54, label = paste("Median =", signif(med_OS$median, 2), "(95% CI, ", signif(med_OS$lower, 2), "to", signif(med_OS$upper, 2),")"), hjust = 0,  size = 5)
+
+OS
+
+km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse) ~ HRCA, data = dataset)
+km_PFS
+
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black"),
+           legend.labs = c("Standard","High risk")
+)
+
+#PFS$plot <- PFS$plot + geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey") +  annotate("text", x = med_PFS$median + 0.5, y = 0.54, label = paste("Median =", signif(med_PFS$median, 2), "(95% CI, ", signif(med_PFS$lower, 2), "to", signif(med_PFS$upper, 2),")"), hjust = 0,  size = 5)
+
+PFS
+```
+
+## KM of OS & PFS, stratified by cell dose
+```{r}
+km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse) ~ intended_cell_dose, data = dataset)
+km_PFS
+
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.4,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black"),
+           #legend.labs = c("Standard","High risk")
+)
+
+PFS
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ intended_cell_dose, data = data1)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.4,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+
+```
+
+## KM of PFS, dose level 1 vs 2-4
+```{r}
+
+data1 <- dataset %>%
+  mutate(
+    dose_level = ifelse(intended_cell_dose == "5e+07","1","2-4")
+  )
+
+km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse) ~ dose_level, data = data1)
+km_PFS
+
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("1","2-4"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black"),
+           #legend.labs = c("Standard","High risk")
+)
+
+#PFS$plot <- PFS$plot + geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey") +  annotate("text", x = med_PFS$median + 0.5, y = 0.54, label = paste("Median =", signif(med_PFS$median, 2), "(95% CI, ", signif(med_PFS$lower, 2), "to", signif(med_PFS$upper, 2),")"), hjust = 0,  size = 5)
+
+PFS
+
+```
+
+## Create KM for OS, stratified by sCR/CR vs VGPR/PR
+```{r, warning=FALSE, message=FALSE}
+
+data1 <- dataset %>%
+  mutate(
+    response.category = recode(best_response, "scr" = "sCR/CR", "cr" = "sCR/CR", "vgpr" = "VGPR/PR", "pr"="VGPR/PR")
+  )
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ response.category, data = data1)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("sCR/CR","VGPR/PR"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+
+
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-28)/30, relapse) ~ response.category, data = data1)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("sCR/CR","VGPR/PR"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+```
+
+## Create KM for OS & PFS, stratified by treatment lines <8 vs >=8
+```{r, warning=FALSE, message=FALSE}
+
+data1 <- dataset %>%
+  mutate(
+    prior.lines.8 = ifelse(no_priortx >=8, 1,0)
+  )
+
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ prior.lines.8, data = data1)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("<8","\u22658"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ prior.lines.8, data = data1)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("<8","\u22658"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+```
+
+## Create KM for OS & PFS, stratified by hx of prior allo
+```{r, warning=FALSE, message=FALSE}
+
+data1 <- dataset %>%
+  mutate(
+    prior.lines.8 = ifelse(no_priortx >=8, 1,0)
+  )
+
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ allo, data = data1)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+summary(km_PFS,times=c(12))
+
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ allo, data = data1)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+summary(km_OS,times=c(12))
+```
+
+## Create KM for OS & PFS, stratified by receipt of prior BCMA-directed therapy
+```{r, warning=FALSE, message=FALSE}
+
+data1 <- dataset %>%
+  mutate(
+    prior.lines.8 = ifelse(no_priortx >=8, 1,0)
+  )
+
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ any_bcma_tx, data = data1)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+summary(km_PFS,times=c(12))
+
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ any_bcma_tx, data = data1)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+summary(km_OS,times=c(12))
+```
+
+## Create KM for OS & PFS, stratified by triple refractory disease
+```{r, warning=FALSE, message=FALSE}
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ triple_ref, data = dataset)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ triple_ref, data = dataset)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+```
+
+## Create KM for OS & PFS, stratified by penta refractory disease
+```{r, warning=FALSE, message=FALSE}
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ pentaref, data = dataset)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ triple_ref, data = dataset)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+```
+
+## Create KM for OS & PFS, stratified by tumor burden (BMPCs <=30 vs >30)
+```{r, warning=FALSE, message=FALSE}
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ High.tumor.burden, data = dataset)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("Low","High"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ High.tumor.burden, data = dataset)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("Low","High"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+```
+
+## Create KM for OS & PFS, stratified by sBCMA at day 90 (< vs >= median)
+```{r, warning=FALSE, message=FALSE}
+data1 <- dataset %>%
+  filter(!is.na(sBCMA.d90))%>%
+  filter(Days.to.death.or.relapse.or.DLC>=90) %>%
+  mutate(
+    sBCMA.high = ifelse(sBCMA.d90 >= median(sBCMA.d90),1,0)
+  )
+
+median(data1$sBCMA.d90)
+
+
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-90)/30, relapse) ~ sBCMA.high, data = data1)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("Low","High"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC-90)/30, death) ~ sBCMA.high, data = data1)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("Low","High"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+```
+
+## Create KM for OS & PFS, stratified by sBCMA at day 60 (< vs >= median)
+```{r, warning=FALSE, message=FALSE}
+data1 <- dataset %>%
+  filter(!is.na(sBCMA.d60))%>%
+  filter(Days.to.death.or.relapse.or.DLC>=60) %>%
+  mutate(
+    sBCMA.high = ifelse(sBCMA.d60 >= median(sBCMA.d60),1,0)
+  )
+
+median(data1$sBCMA.d60)
+
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-60)/30, relapse) ~ sBCMA.high, data = data1)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("Low","High"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC-60)/30, death) ~ sBCMA.high, data = data1)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("Low","High"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+```
+
+## Create KM for OS & PFS, stratified by BCMA ABC at screening
+```{r, warning=FALSE, message=FALSE}
+data1 <- dataset %>%
+  filter(!is.na(bcma_scrn))%>%
+  filter(Days.to.death.or.relapse.or.DLC>=60) %>%
+  mutate(
+    BCMA.high = ifelse(bcma_scrn >= median(bcma_scrn),1,0)
+  )
+
+median(data1$bcma_scrn)
+
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ BCMA.high, data = data1)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("Low","High"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ BCMA.high, data = data1)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("Low","High"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+```
+
+# Regression analysis
+## Cox regression
+```{r}
+theme_gtsummary_compact()
+preds <- c("HRCA", "cnLOH", "response.category", "intended_cell_dose", "High.tumor.burden","any_bcma_tx","pentaref","triple_ref", "sBCMA.d90", "sBCMA.d60")
+
+data1 <- dataset %>%
+  mutate(
+    response.category = recode(best_response, "scr" = "sCR/CR", "cr" = "sCR/CR", "vgpr" = "VGPR/PR", "pr"="VGPR/PR"),
+    intended_cell_dose = log10(intended_cell_dose)
+  )
+
+
+uv_tab_OS <- tbl_uvregression(
+  data1[c(preds)],
+  method = coxph,
+  y = Surv(data1$Days.to.death.or.DLC, data1$death),
+  exponentiate = TRUE
+) %>%
+  sort_p()
+
+uv_tab_PFS <- tbl_uvregression(
+  data1[c(preds)],
+  method = coxph,
+  y = Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse),
+  exponentiate = TRUE
+)
+
+
+tbl_merge(list(uv_tab_OS, uv_tab_PFS), tab_spanner = c("**OS**", "**PFS**"))
+
+
+```
+
+# Probability plots
+## Hazard of OS vs sBCMA d90
+```{r}
+data1 <- dataset %>%
+  select(sBCMA.d90, Days.to.death.or.DLC, death) %>%
+  filter(!is.na(sBCMA.d90))%>%
+  mutate(
+    sBCMA.high = ifelse(sBCMA.d90 >= median(sBCMA.d90),1,0)
+  )
+
+
+
+dd <- datadist(data1)
+options(datadist='dd')
+
+S <- Surv(data1$Days.to.death.or.DLC, data1$death)
+f <- cph(S ~ sBCMA.d90, x=TRUE, y=TRUE,surv=TRUE,data=data1)
+
+model <- Predict(f, sBCMA.d90, fun=function(x) exp(x) )
+
+ggplot(as.data.frame(model),aes(x=sBCMA.d90, y=yhat)) + 
+  geom_ribbon(data = model, aes(ymin=lower, ymax=upper), alpha=0.2, linetype=0) + 
+  geom_line() + 
+  theme_bw() + 
+  labs(
+    x = "sBCMA d90",
+    y = "OS (hazard)") +
+  theme(title = element_text(size=16,face="bold"),legend.title=element_blank())
+```
+
+## Hazard of OS vs screening BCMA ABC
+```{r}
+data1 <- dataset %>%
+  select(bcma_scrn, Days.to.death.or.DLC, death)
+
+
+
+dd <- datadist(data1)
+options(datadist='dd')
+
+S <- Surv(data1$Days.to.death.or.DLC, data1$death)
+f <- cph(S ~ rcs(bcma_scrn,3), x=TRUE, y=TRUE,surv=TRUE,data=data1)
+
+model <- Predict(f, bcma_scrn, fun=function(x) exp(x) )
+
+ggplot(as.data.frame(model),aes(x=bcma_scrn, y=yhat)) + 
+  geom_ribbon(data = model, aes(ymin=lower, ymax=upper), alpha=0.2, linetype=0) + 
+  geom_line() + 
+  theme_bw() + 
+  labs(
+    x = "sBCMA d90",
+    y = "OS (hazard)") +
+  theme(title = element_text(size=16,face="bold"),legend.title=element_blank())
+```
+
