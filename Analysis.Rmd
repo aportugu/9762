@@ -1155,6 +1155,28 @@ tbl_merge(list(uv_tab_OS, uv_tab_PFS), tab_spanner = c("**OS**", "**PFS**"))
 
 ```
 
+# Scatterplot
+
+## TTR by BCMA ABC at baseline in relapsed patients
+```{r}
+data1 <- dataset %>%
+  filter(relapse == 1) %>%
+  transmute(
+    bcma_scrn = log(bcma_scrn),
+    time.to.relapse = Days.to.death.or.relapse.or.DLC/30
+  )
+
+ggplot(data1, aes(x=time.to.relapse, y = bcma_scrn)) + 
+  geom_point(shape = 16) + # Add points to the plot with shape 16 (i.e., basic circle)
+  theme_classic() + # Use the minimal theme
+  geom_smooth(aes(x = time.to.relapse, y=bcma_scrn), method = "lm", se = TRUE, color = "#104a8e", inherit.aes = FALSE, linetype = "solid", size = 0.5)+
+  stat_cor(method = "pearson", label.x = 3, label.y = 9) +
+  labs(x = "Time to relapse (months)", y = "log(BCMA ABC)")
+  
+```
+
+
+
 # Probability plots
 ## Hazard of OS vs sBCMA d90
 ```{r}
