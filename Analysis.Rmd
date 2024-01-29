@@ -132,6 +132,25 @@ swimmer_plot(df=filter(swimmer_data, !is.na(Response) ),
 
 ```
 
+# Supplemental figure
+## sBCMA plots
+```{r}
+sBCMA_data = as.data.frame(read_excel(path = "sBCMA data.xlsx"))
+
+
+ggplot(sBCMA_data, aes(x = timepoint/30, y = sBCMA, color = Tumor.burden)) +
+  geom_point(shape = 16, size = 2) +
+  theme_classic() +
+  labs(x = "Time (months)", y = "sBCMA") +
+  scale_color_discrete(name = "Tumor burden") +
+  facet_wrap(~Number, scales = "free_y", ncol = 5) +  # Facet by the "Number" variable with free y-axes and 2 columns
+  scale_y_log10(limits = c(0.01, 10000)) +
+  scale_x_continuous(breaks = seq(0, 48, by = 12)) +
+  theme(strip.text = element_text(size = 9)) + 
+  geom_vline(aes(xintercept = Relapse.time/30), linetype = "dashed", color = "black")  # Add vertical line
+```
+
+
 # Survival analysis
 ## Length of follow-up
 ```{r}
