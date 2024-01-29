@@ -234,7 +234,7 @@ summary(km_PFS,times=c(12))
 ## PFS and OS on the same plot
 ```{r}
 OS_EFS <- ggsurvplot_combine(list(km_PFS, km_OS),
-           data=db,
+           data=dataset,
            pval=TRUE,
            conf.int = TRUE,
            risk.table = TRUE, # Add risk table
@@ -453,7 +453,7 @@ km_OS
 
 data1 <- dataset %>%
   mutate(
-    dose_level = ifelse(intended_cell_dose == "Dose level 4 - 450E6","4","1-3")
+    dose_level = ifelse(intended_cell_dose == "Dose level 1 - 50E6","1","2-4")
   )
 
 km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse) ~ dose_level, data = data1)
@@ -551,6 +551,8 @@ PFS <- ggsurvplot(km_PFS,
 PFS
 km_PFS
 ```
+
+
 
 ## Create KM for OS & PFS, stratified by treatment lines <8 vs >=8
 ```{r, warning=FALSE, message=FALSE}
