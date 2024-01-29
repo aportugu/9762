@@ -25,6 +25,9 @@ library(ggsurvfit)
 library(rms)
 library(gt)
 library(bstfun)
+library(swimplot)
+library(ggplot2)
+library(RColorBrewer)
 ```
 
 ## Read in the data
@@ -100,7 +103,34 @@ dataset %>%
 
 ```
 
+# Swimmer's plot
+## Figure 1: Swimmer's plot
+```{r}
+swimmer_data = as.data.frame(read_excel(path = "9762 swimmer.xlsx", sheet = "Response")) %>%
+  mutate(
+    Response_start = Response_start/30,
+    Response_end = Response_end/30,
+    Arrow_start = Arrow_start/30,
+    Time = Time/30,
+    Response = factor(Response, levels=c("PD","sCR","CR","VGPR","PR","SD"))
+  )
 
+pastel1_palette <- brewer.pal(8, "Pastel1")[1:6]
+
+
+swimmer_plot(df=filter(swimmer_data, !is.na(Response) ), 
+            id="Number", 
+            end= "Response_end", 
+            name_fill="Response",
+            stratify = "Dose_level",
+            ) +
+  scale_fill_manual(values = pastel1_palette) +
+  swimmer_arrows(df_arrows = filter(swimmer_data,!is.na(Arrow_start) ),id="Number",arrow_start="Arrow_start", name_col = 'Response', type = "open", cex=1, arrow_positions = c(1,5)) + 
+  swimmer_points(df_points= filter(swimmer_data,!is.na(Event) ) ,id='Number',name_shape = "Event", time='Time',size=2,fill='white',col="black") +
+  scale_y_continuous(name = "Time since infusion (Months)",breaks = seq(0,10000,by=12)) +
+  guides(fill = guide_legend(title = "Response"), colour = FALSE)  # Hide the legend for arrows
+
+```
 
 # Survival analysis
 ## Length of follow-up
@@ -404,7 +434,7 @@ km_OS
 
 data1 <- dataset %>%
   mutate(
-    dose_level = ifelse(intended_cell_dose == "5e+07","1","2-4")
+    dose_level = ifelse(intended_cell_dose == "Dose level 1 - 50E6","1","2-4")
   )
 
 km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse) ~ dose_level, data = data1)
@@ -1129,8 +1159,7 @@ preds <- c("HRCA", "cnLOH", "response.category", "intended_cell_dose", "High.tum
 
 data1 <- dataset %>%
   mutate(
-    response.category = recode(best_response, "scr" = "sCR/CR", "cr" = "sCR/CR", "vgpr" = "VGPR/PR", "pr"="VGPR/PR"),
-    intended_cell_dose = log10(intended_cell_dose)
+    response.category = recode(best_response, "scr" = "sCR/CR", "cr" = "sCR/CR", "vgpr" = "VGPR/PR", "pr"="VGPR/PR")
   )
 
 
@@ -1231,4 +1260,5 @@ ggplot(as.data.frame(model),aes(x=bcma_scrn, y=yhat)) +
     y = "OS (hazard)") +
   theme(title = element_text(size=16,face="bold"),legend.title=element_blank())
 ```
+
 
