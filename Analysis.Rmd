@@ -1155,11 +1155,15 @@ km_OS
 ## Cox regression
 ```{r}
 theme_gtsummary_compact()
-preds <- c("HRCA", "cnLOH", "response.category", "intended_cell_dose", "High.tumor.burden","any_bcma_tx","pentaref","triple_ref", "sBCMA.d90", "sBCMA.d60")
+preds <- c("HRCA", "cnLOH", "response.category", "intended_cell_dose", "High.tumor.burden","any_bcma_tx","pentaref","triple_ref","bcma_scrn", "sBCMA.d90", "sBCMA.d60", "sbcma_nadir","sbcma_nadir_timepoint")
 
 data1 <- dataset %>%
   mutate(
-    response.category = recode(best_response, "scr" = "sCR/CR", "cr" = "sCR/CR", "vgpr" = "VGPR/PR", "pr"="VGPR/PR")
+    response.category = recode(best_response, "scr" = "sCR/CR", "cr" = "sCR/CR", "vgpr" = "VGPR/PR", "pr"="VGPR/PR"),
+    sBCMA.d90 = sBCMA.d90 /10,
+    sBCMA.d60 = sBCMA.d60 / 10,
+    sbcma_nadir = sbcma_nadir / 10,
+    bcma_scrn = log10(bcma_scrn)
   )
 
 
@@ -1198,7 +1202,7 @@ data1 <- dataset %>%
 ggplot(data1, aes(x=time.to.relapse, y = bcma_scrn)) + 
   geom_point(shape = 16) + # Add points to the plot with shape 16 (i.e., basic circle)
   theme_classic() + # Use the minimal theme
-  geom_smooth(aes(x = time.to.relapse, y=bcma_scrn), method = "lm", se = TRUE, color = "#104a8e", inherit.aes = FALSE, linetype = "solid", size = 0.5)+
+  geom_smooth(aes(x = time.to.relapse, y=bcma_scrn), method = "lm", se = TRUE, color = "#104a8e", inherit.aes = FALSE, linetype = "solid", linewidth = 0.5)+
   stat_cor(method = "pearson", label.x = 3, label.y = 9) +
   labs(x = "Time to relapse (months)", y = "log(BCMA ABC)")
   
@@ -1207,46 +1211,78 @@ ggplot(data1, aes(x=time.to.relapse, y = bcma_scrn)) +
 
 
 # Probability plots
-## Hazard of OS vs sBCMA d90
+
+## Hazard of OS/PFS vs sBCMA d90
 ```{r}
 data1 <- dataset %>%
-  select(sBCMA.d90, Days.to.death.or.DLC, death) %>%
-  filter(!is.na(sBCMA.d90))%>%
-  mutate(
-    sBCMA.high = ifelse(sBCMA.d90 >= median(sBCMA.d90),1,0)
-  )
-
-
+  select(sBCMA.d90, Days.to.death.or.DLC, death, Days.to.death.or.relapse.or.DLC, relapse)
 
 dd <- datadist(data1)
 options(datadist='dd')
 
-S <- Surv(data1$Days.to.death.or.DLC, data1$death)
-f <- cph(S ~ sBCMA.d90, x=TRUE, y=TRUE,surv=TRUE,data=data1)
 
-model <- Predict(f, sBCMA.d90, fun=function(x) exp(x) )
 
-ggplot(as.data.frame(model),aes(x=sBCMA.d90, y=yhat)) + 
-  geom_ribbon(data = model, aes(ymin=lower, ymax=upper), alpha=0.2, linetype=0) + 
-  geom_line() + 
-  theme_bw() + 
-  labs(
-    x = "sBCMA d90",
-    y = "OS (hazard)") +
-  theme(title = element_text(size=16,face="bold"),legend.title=element_blank())
+fit1 <- cph(Surv(data1$Days.to.death.or.DLC, data1$death) ~ sBCMA.d90, data=data1)
+df1 <- data.frame(Predict(fit1, sBCMA.d90, fun=function(x) exp(x) ) )
+
+
+fit2 <- cph(Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse) ~ sBCMA.d90, data=data1)
+df2 <- data.frame(Predict(fit2, sBCMA.d90, fun=function(x) exp(x) ) )
+
+ggplot() + 
+  geom_line(data=df1, aes(x=sBCMA.d90,y=yhat, color = "OS")) + geom_ribbon( data=df1, aes(x=sBCMA.d90,ymin=lower, ymax=upper),alpha=0.10)+
+  geom_line(data=df2, aes(x=sBCMA.d90,y=yhat, color ="PFS" )) + geom_ribbon(data = df2, aes(x=sBCMA.d90,ymin=lower, ymax=upper),alpha=0.10)+
+  labs(x = "sBCMA d90",
+       y = "Hazard")+
+  theme_classic() +
+  scale_y_continuous(breaks=c(1,2,3,4,5,6,7,8, 9)) + 
+  #scale_x_continuous(breaks=c(0.25,0.5,0.75,1.0,1.25,1.5,1.75), limits=c(0.25, 1.75)) + 
+  theme(legend.position = c(0, 1),legend.justification = c(-7.5, 1.1))+
+  scale_color_manual(values = c ("steelblue","coral2")) + 
+  theme(title = element_text(size=20,face="bold"),legend.title=element_blank())
 ```
 
-## Hazard of OS vs screening BCMA ABC
+## Hazard of OS/PFS vs screening BCMA ABC
 ```{r}
 data1 <- dataset %>%
-  select(bcma_scrn, Days.to.death.or.DLC, death)
+  select(bcma_scrn, Days.to.death.or.DLC, death, Days.to.death.or.relapse.or.DLC, relapse)
+
+dd <- datadist(data1)
+options(datadist='dd')
+
+
+
+fit1 <- cph(Surv(data1$Days.to.death.or.DLC, data1$death) ~ rcs(bcma_scrn,3), data=data1)
+df1 <- data.frame(Predict(fit1, bcma_scrn, fun=function(x) exp(x) ) )
+
+
+fit2 <- cph(Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse) ~ rcs(bcma_scrn,3), data=data1)
+df2 <- data.frame(Predict(fit2, bcma_scrn, fun=function(x) exp(x) ) )
+
+ggplot() + 
+  geom_line(data=df1, aes(x=bcma_scrn,y=yhat, color = "OS")) + geom_ribbon( data=df1, aes(x=bcma_scrn,ymin=lower, ymax=upper),alpha=0.10)+
+  geom_line(data=df2, aes(x=bcma_scrn,y=yhat, color ="PFS" )) + geom_ribbon(data = df2, aes(x=bcma_scrn,ymin=lower, ymax=upper),alpha=0.10)+
+  labs(x = "BCMA screen",
+       y = "Hazard")+
+  theme_bw() +
+  #scale_y_continuous(breaks=c(0,0.2,0.4,0.6,0.8,1.0), limits=c(0, 1)) + 
+  #scale_x_continuous(breaks=c(0.25,0.5,0.75,1.0,1.25,1.5,1.75), limits=c(0.25, 1.75)) + 
+  theme(legend.position = c(0, 1),legend.justification = c(-8, 1.1))+
+  scale_color_manual(values = c ("steelblue","coral2")) + 
+  theme(title = element_text(size=20,face="bold"),legend.title=element_blank())
+```
+
+## Hazard of PFS vs screening BCMA ABC
+```{r}
+data1 <- dataset %>%
+  select(bcma_scrn, Days.to.death.or.relapse.or.DLC, relapse)
 
 
 
 dd <- datadist(data1)
 options(datadist='dd')
 
-S <- Surv(data1$Days.to.death.or.DLC, data1$death)
+S <- Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse)
 f <- cph(S ~ rcs(bcma_scrn,3), x=TRUE, y=TRUE,surv=TRUE,data=data1)
 
 model <- Predict(f, bcma_scrn, fun=function(x) exp(x) )
@@ -1256,9 +1292,59 @@ ggplot(as.data.frame(model),aes(x=bcma_scrn, y=yhat)) +
   geom_line() + 
   theme_bw() + 
   labs(
-    x = "sBCMA d90",
-    y = "OS (hazard)") +
+    x = "Screening BCMA",
+    y = "PFS (hazard)") +
   theme(title = element_text(size=16,face="bold"),legend.title=element_blank())
 ```
 
+## Hazard of PFS vs sBCMA nadir
+```{r}
+data1 <- dataset %>%
+  select(sbcma_nadir, Days.to.death.or.relapse.or.DLC, relapse) %>%
+  filter(!is.na(sbcma_nadir))
 
+
+
+dd <- datadist(data1)
+options(datadist='dd')
+
+S <- Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse)
+f <- cph(S ~ sbcma_nadir, x=TRUE, y=TRUE,surv=TRUE,data=data1)
+
+model <- Predict(f, sbcma_nadir, fun=function(x) exp(x) )
+
+ggplot(as.data.frame(model),aes(x=sbcma_nadir, y=yhat)) + 
+  geom_ribbon(data = model, aes(ymin=lower, ymax=upper), alpha=0.2, linetype=0) + 
+  geom_line() + 
+  theme_bw() + 
+  labs(
+    x = "sBCMA nadir",
+    y = "PFS (hazard)") +
+  theme(title = element_text(size=16,face="bold"),legend.title=element_blank())
+```
+
+## Hazard of PFS vs time to sBCMA nadir
+```{r}
+data1 <- dataset %>%
+  select(sbcma_nadir_timepoint, Days.to.death.or.relapse.or.DLC, relapse) %>%
+  filter(!is.na(sbcma_nadir_timepoint))
+
+
+
+dd <- datadist(data1)
+options(datadist='dd')
+
+S <- Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse)
+f <- cph(S ~ sbcma_nadir_timepoint, x=TRUE, y=TRUE,surv=TRUE,data=data1)
+
+model <- Predict(f, sbcma_nadir_timepoint, fun=function(x) exp(x) )
+
+ggplot(as.data.frame(model),aes(x=sbcma_nadir_timepoint, y=yhat)) + 
+  geom_ribbon(data = model, aes(ymin=lower, ymax=upper), alpha=0.2, linetype=0) + 
+  geom_line() + 
+  theme_bw() + 
+  labs(
+    x = "Time to sBCMA nadir (days)",
+    y = "PFS (hazard)") +
+  theme(title = element_text(size=16,face="bold"),legend.title=element_blank())
+```
