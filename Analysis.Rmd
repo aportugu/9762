@@ -200,7 +200,7 @@ OS
 km_OS
 summary(km_OS,times=c(12))
 
-km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse.or.death) ~ 1, data = dataset)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse.or.death) ~ 1, data = dataset)
 med_PFS <- surv_median(km_PFS)
 
 PFS <- ggsurvplot(km_PFS,
@@ -626,6 +626,76 @@ km_OS
 ```
 
 ## Create KM for OS & PFS, stratified by hx of prior allo
+```{r, warning=FALSE, message=FALSE}
+
+data1 <- dataset %>%
+  mutate(
+    prior.lines.8 = ifelse(no_priortx >=8, 1,0)
+  )
+
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse.or.death) ~ allo, data = data1)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+#summary(km_PFS,times=c(12))
+
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ allo, data = data1)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+#summary(km_OS,times=c(12))
+```
+
+## Create KM for OS & PFS, stratified by PCL
 ```{r, warning=FALSE, message=FALSE}
 
 data1 <- dataset %>%
