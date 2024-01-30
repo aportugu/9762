@@ -32,7 +32,7 @@ library(RColorBrewer)
 
 ## Read in the data
 ```{r}
-db1 = read_excel(path = "9762 data for analysis 1.23.24.xlsx", sheet = "Survival")
+db1 = read_excel(path = "9762 data for analysis 1.29.24.xlsx", sheet = "Survival")
 
 dataset <- db1 %>%
   mutate(
@@ -45,7 +45,8 @@ dataset <- db1 %>%
     Days.to.death.or.DLC = Death.or.DLC - infuse_dt,
     Days.to.death.or.relapse.or.DLC = Death.or.relapse.or.DLC - infuse_dt,
     Days.from.dx.to.infusion = infuse_dt - dx_dt,
-    Age = (infuse_dt-birthdate)/365
+    Age = (infuse_dt-birthdate)/365,
+    relapse.or.death = ifelse(relapse == 1 | death == 1,1,0)
   )
 ```
 
@@ -199,7 +200,7 @@ OS
 km_OS
 summary(km_OS,times=c(12))
 
-km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse) ~ 1, data = dataset)
+km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse.or.death) ~ 1, data = dataset)
 med_PFS <- surv_median(km_PFS)
 
 PFS <- ggsurvplot(km_PFS,
@@ -281,7 +282,7 @@ OS_EFS
 ```{r, warning=FALSE, message=FALSE}
 
 
-km_DOR <- survfit(Surv((Days.to.death.or.relapse.or.DLC-28)/30, relapse) ~ 1, data = dataset)
+km_DOR <- survfit(Surv((Days.to.death.or.relapse.or.DLC-28)/30, relapse.or.death) ~ 1, data = dataset)
 med_DOR <- surv_median(km_DOR)
 
 DOR <- ggsurvplot(km_DOR,
@@ -350,7 +351,7 @@ OS <- ggsurvplot(km_OS,
 
 OS
 
-km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse) ~ HRCA, data = dataset)
+km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse.or.death) ~ HRCA, data = dataset)
 km_PFS
 
 med_PFS <- surv_median(km_PFS)
@@ -386,7 +387,7 @@ PFS
 
 ## KM of OS & PFS, stratified by cell dose
 ```{r}
-km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse) ~ intended_cell_dose, data = dataset)
+km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse.or.death) ~ intended_cell_dose, data = dataset)
 km_PFS
 
 med_PFS <- surv_median(km_PFS)
@@ -456,7 +457,7 @@ data1 <- dataset %>%
     dose_level = ifelse(intended_cell_dose == "Dose level 1 - 50E6","1","2-4")
   )
 
-km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse) ~ dose_level, data = data1)
+km_PFS <- survfit(Surv(Days.to.death.or.relapse.or.DLC/30, relapse.or.death) ~ dose_level, data = data1)
 km_PFS
 
 med_PFS <- surv_median(km_PFS)
@@ -525,7 +526,7 @@ OS
 km_OS
 
 
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-28)/30, relapse) ~ response.category, data = data1)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-28)/30, relapse.or.death) ~ response.category, data = data1)
 
 PFS <- ggsurvplot(km_PFS,
            pval=TRUE,
@@ -535,7 +536,7 @@ PFS <- ggsurvplot(km_PFS,
            risk.table.col = "strata", # Change risk table color by groups
            tables.height = 0.25,
            tables.theme = theme_cleantable(),
-           xlab="Time (months)", ylab = "Progression-free survival",
+           xlab="Time (months)", ylab = "Duration of response",
            xlim = c(0,65), break.x.by = c(12),
            ylim = c(0,1), break.y.by = c(0.25),
            legend.labs = c("sCR/CR","VGPR/PR"),
@@ -562,7 +563,7 @@ data1 <- dataset %>%
     prior.lines.8 = ifelse(no_priortx >=8, 1,0)
   )
 
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ prior.lines.8, data = data1)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse.or.death) ~ prior.lines.8, data = data1)
 med_PFS <- surv_median(km_PFS)
 
 PFS <- ggsurvplot(km_PFS,
@@ -632,7 +633,7 @@ data1 <- dataset %>%
     prior.lines.8 = ifelse(no_priortx >=8, 1,0)
   )
 
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ allo, data = data1)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse.or.death) ~ PCL, data = data1)
 med_PFS <- surv_median(km_PFS)
 
 PFS <- ggsurvplot(km_PFS,
@@ -660,10 +661,10 @@ PFS <- ggsurvplot(km_PFS,
 
 PFS
 km_PFS
-summary(km_PFS,times=c(12))
+#summary(km_PFS,times=c(12))
 
 
-km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ allo, data = data1)
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ PCL, data = data1)
 med_OS <- surv_median(km_OS)
 
 OS <- ggsurvplot(km_OS,
@@ -691,7 +692,7 @@ OS <- ggsurvplot(km_OS,
 
 OS
 km_OS
-summary(km_OS,times=c(12))
+#summary(km_OS,times=c(12))
 ```
 
 ## Create KM for OS & PFS, stratified by receipt of prior BCMA-directed therapy
@@ -702,7 +703,7 @@ data1 <- dataset %>%
     prior.lines.8 = ifelse(no_priortx >=8, 1,0)
   )
 
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ any_bcma_tx, data = data1)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse.or.death) ~ any_bcma_tx, data = data1)
 med_PFS <- surv_median(km_PFS)
 
 PFS <- ggsurvplot(km_PFS,
@@ -766,7 +767,7 @@ summary(km_OS,times=c(12))
 
 ## Create KM for OS & PFS, stratified by triple refractory disease
 ```{r, warning=FALSE, message=FALSE}
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ triple_ref, data = dataset)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse.or.death) ~ triple_ref, data = dataset)
 med_PFS <- surv_median(km_PFS)
 
 PFS <- ggsurvplot(km_PFS,
@@ -827,7 +828,7 @@ km_OS
 
 ## Create KM for OS & PFS, stratified by penta refractory disease
 ```{r, warning=FALSE, message=FALSE}
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ pentaref, data = dataset)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse.or.death) ~ pentaref, data = dataset)
 med_PFS <- surv_median(km_PFS)
 
 PFS <- ggsurvplot(km_PFS,
@@ -888,7 +889,7 @@ km_OS
 
 ## Create KM for OS & PFS, stratified by tumor burden (BMPCs <=30 vs >30)
 ```{r, warning=FALSE, message=FALSE}
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ High.tumor.burden, data = dataset)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse.or.death) ~ High.tumor.burden, data = dataset)
 med_PFS <- surv_median(km_PFS)
 
 PFS <- ggsurvplot(km_PFS,
@@ -961,7 +962,7 @@ data1 <- dataset %>%
 median(data1$sBCMA.d90)
 
 
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-90)/30, relapse) ~ sBCMA.high, data = data1)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-90)/30, relapse.or.death) ~ sBCMA.high, data = data1)
 med_PFS <- surv_median(km_PFS)
 
 PFS <- ggsurvplot(km_PFS,
@@ -1033,7 +1034,7 @@ data1 <- dataset %>%
 
 median(data1$sBCMA.d60)
 
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-60)/30, relapse) ~ sBCMA.high, data = data1)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-60)/30, relapse.or.death) ~ sBCMA.high, data = data1)
 med_PFS <- surv_median(km_PFS)
 
 PFS <- ggsurvplot(km_PFS,
@@ -1105,7 +1106,7 @@ data1 <- dataset %>%
 
 median(data1$bcma_scrn)
 
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse) ~ BCMA.high, data = data1)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse.or.death) ~ BCMA.high, data = data1)
 med_PFS <- surv_median(km_PFS)
 
 PFS <- ggsurvplot(km_PFS,
@@ -1193,7 +1194,7 @@ uv_tab_OS <- tbl_uvregression(
 uv_tab_PFS <- tbl_uvregression(
   data1[c(preds)],
   method = coxph,
-  y = Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse),
+  y = Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse.or.death),
   exponentiate = TRUE
 )
 
@@ -1230,7 +1231,7 @@ ggplot(data1, aes(x=time.to.relapse, y = bcma_scrn)) +
 ## Hazard of OS/PFS vs sBCMA d90
 ```{r}
 data1 <- dataset %>%
-  select(sBCMA.d90, Days.to.death.or.DLC, death, Days.to.death.or.relapse.or.DLC, relapse)
+  select(sBCMA.d90, Days.to.death.or.DLC, death, Days.to.death.or.relapse.or.DLC, relapse.or.death)
 
 dd <- datadist(data1)
 options(datadist='dd')
@@ -1241,7 +1242,7 @@ fit1 <- cph(Surv(data1$Days.to.death.or.DLC, data1$death) ~ sBCMA.d90, data=data
 df1 <- data.frame(Predict(fit1, sBCMA.d90, fun=function(x) exp(x) ) )
 
 
-fit2 <- cph(Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse) ~ sBCMA.d90, data=data1)
+fit2 <- cph(Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse.or.death) ~ sBCMA.d90, data=data1)
 df2 <- data.frame(Predict(fit2, sBCMA.d90, fun=function(x) exp(x) ) )
 
 ggplot() + 
@@ -1260,7 +1261,7 @@ ggplot() +
 ## Hazard of OS/PFS vs screening BCMA ABC
 ```{r}
 data1 <- dataset %>%
-  select(bcma_scrn, Days.to.death.or.DLC, death, Days.to.death.or.relapse.or.DLC, relapse)
+  select(bcma_scrn, Days.to.death.or.DLC, death, Days.to.death.or.relapse.or.DLC, relapse.or.death)
 
 dd <- datadist(data1)
 options(datadist='dd')
@@ -1271,7 +1272,7 @@ fit1 <- cph(Surv(data1$Days.to.death.or.DLC, data1$death) ~ rcs(bcma_scrn,3), da
 df1 <- data.frame(Predict(fit1, bcma_scrn, fun=function(x) exp(x) ) )
 
 
-fit2 <- cph(Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse) ~ rcs(bcma_scrn,3), data=data1)
+fit2 <- cph(Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse.or.death) ~ rcs(bcma_scrn,3), data=data1)
 df2 <- data.frame(Predict(fit2, bcma_scrn, fun=function(x) exp(x) ) )
 
 ggplot() + 
@@ -1279,10 +1280,8 @@ ggplot() +
   geom_line(data=df2, aes(x=bcma_scrn,y=yhat, color ="PFS" )) + geom_ribbon(data = df2, aes(x=bcma_scrn,ymin=lower, ymax=upper),alpha=0.10)+
   labs(x = "BCMA screen",
        y = "Hazard")+
-  theme_bw() +
-  #scale_y_continuous(breaks=c(0,0.2,0.4,0.6,0.8,1.0), limits=c(0, 1)) + 
-  #scale_x_continuous(breaks=c(0.25,0.5,0.75,1.0,1.25,1.5,1.75), limits=c(0.25, 1.75)) + 
-  theme(legend.position = c(0, 1),legend.justification = c(-8, 1.1))+
+  theme_classic() +
+  theme(legend.position = c(0, 1),legend.justification = c(-7.5, 1.1))+
   scale_color_manual(values = c ("steelblue","coral2")) + 
   theme(title = element_text(size=20,face="bold"),legend.title=element_blank())
 ```
@@ -1290,14 +1289,14 @@ ggplot() +
 ## Hazard of PFS vs screening BCMA ABC
 ```{r}
 data1 <- dataset %>%
-  select(bcma_scrn, Days.to.death.or.relapse.or.DLC, relapse)
+  select(bcma_scrn, Days.to.death.or.relapse.or.DLC, relapse.or.death)
 
 
 
 dd <- datadist(data1)
 options(datadist='dd')
 
-S <- Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse)
+S <- Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse.or.death)
 f <- cph(S ~ rcs(bcma_scrn,3), x=TRUE, y=TRUE,surv=TRUE,data=data1)
 
 model <- Predict(f, bcma_scrn, fun=function(x) exp(x) )
@@ -1315,7 +1314,7 @@ ggplot(as.data.frame(model),aes(x=bcma_scrn, y=yhat)) +
 ## Hazard of PFS vs sBCMA nadir
 ```{r}
 data1 <- dataset %>%
-  select(sbcma_nadir, Days.to.death.or.relapse.or.DLC, relapse) %>%
+  select(sbcma_nadir, Days.to.death.or.relapse.or.DLC, relapse.or.death) %>%
   filter(!is.na(sbcma_nadir))
 
 
@@ -1323,7 +1322,7 @@ data1 <- dataset %>%
 dd <- datadist(data1)
 options(datadist='dd')
 
-S <- Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse)
+S <- Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse.or.death)
 f <- cph(S ~ sbcma_nadir, x=TRUE, y=TRUE,surv=TRUE,data=data1)
 
 model <- Predict(f, sbcma_nadir, fun=function(x) exp(x) )
@@ -1341,7 +1340,7 @@ ggplot(as.data.frame(model),aes(x=sbcma_nadir, y=yhat)) +
 ## Hazard of PFS vs time to sBCMA nadir
 ```{r}
 data1 <- dataset %>%
-  select(sbcma_nadir_timepoint, Days.to.death.or.relapse.or.DLC, relapse) %>%
+  select(sbcma_nadir_timepoint, Days.to.death.or.relapse.or.DLC, relapse.or.death) %>%
   filter(!is.na(sbcma_nadir_timepoint))
 
 
@@ -1349,7 +1348,7 @@ data1 <- dataset %>%
 dd <- datadist(data1)
 options(datadist='dd')
 
-S <- Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse)
+S <- Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse.or.death)
 f <- cph(S ~ sbcma_nadir_timepoint, x=TRUE, y=TRUE,surv=TRUE,data=data1)
 
 model <- Predict(f, sbcma_nadir_timepoint, fun=function(x) exp(x) )
