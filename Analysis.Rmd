@@ -48,6 +48,18 @@ dataset <- db1 %>%
     Age = (infuse_dt-birthdate)/365,
     relapse.or.death = ifelse(relapse == 1 | death == 1,1,0)
   )
+
+df <- data.frame(
+  pt_no = as.numeric(1:25),
+  Time.to.response = ifelse(1:25 == 19, 60, 28)
+)
+
+dataset <- left_join(
+    x = dataset,
+    y = df,
+    by = "pt_no")
+
+
 ```
 
 
@@ -282,7 +294,7 @@ OS_EFS
 ```{r, warning=FALSE, message=FALSE}
 
 
-km_DOR <- survfit(Surv((Days.to.death.or.relapse.or.DLC-28)/30, relapse.or.death) ~ 1, data = dataset)
+km_DOR <- survfit(Surv((Days.to.death.or.relapse.or.DLC - Time.to.response)/30, relapse.or.death) ~ 1, data = dataset)
 med_DOR <- surv_median(km_DOR)
 
 DOR <- ggsurvplot(km_DOR,
@@ -487,7 +499,7 @@ PFS
 
 ```
 
-## Create KM for OS, stratified by sCR/CR vs VGPR/PR
+## Create KM for OS & DOR, stratified by sCR/CR vs VGPR/PR
 ```{r, warning=FALSE, message=FALSE}
 
 data1 <- dataset %>%
@@ -526,7 +538,7 @@ OS
 km_OS
 
 
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-28)/30, relapse.or.death) ~ response.category, data = data1)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-Time.to.response)/30, relapse.or.death) ~ response.category, data = data1)
 
 PFS <- ggsurvplot(km_PFS,
            pval=TRUE,
@@ -551,6 +563,7 @@ PFS <- ggsurvplot(km_PFS,
 
 PFS
 km_PFS
+
 ```
 
 
