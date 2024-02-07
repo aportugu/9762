@@ -28,6 +28,7 @@ library(bstfun)
 library(swimplot)
 library(ggplot2)
 library(RColorBrewer)
+library(ggforce)
 ```
 
 ## Read in the data
@@ -125,23 +126,28 @@ swimmer_data = as.data.frame(read_excel(path = "9762 swimmer.xlsx", sheet = "Res
     Response_end = Response_end/30,
     Arrow_start = Arrow_start/30,
     Time = Time/30,
-    Response = factor(Response, levels=c("PD","sCR","CR","VGPR","PR","SD"))
+    Response = factor(Response, levels=c("PD","sCR","CR","VGPR","PR","SD")),
+    Number = paste(id, Tumor_burden)
   )
 
-pastel1_palette <- brewer.pal(8, "Pastel1")[1:6]
+pastel1_palette <- brewer.pal(8, "Pastel1")[2:7]
 
 
 swimmer_plot(df=filter(swimmer_data, !is.na(Response) ), 
             id="Number", 
+            label_value = vars("Tumor_burden"),
             end= "Response_end", 
             name_fill="Response",
             stratify = "Dose_level",
+            identifiers = TRUE,
+            width=.8
             ) +
-  scale_fill_manual(values = pastel1_palette) +
+  scale_fill_manual(values = pastel1_palette[c(6,2,1,3,4,5)]) +
   swimmer_arrows(df_arrows = filter(swimmer_data,!is.na(Arrow_start) ),id="Number",arrow_start="Arrow_start", name_col = 'Response', type = "open", cex=1, arrow_positions = c(1,5)) + 
   swimmer_points(df_points= filter(swimmer_data,!is.na(Event) ) ,id='Number',name_shape = "Event", time='Time',size=2,fill='white',col="black") +
   scale_y_continuous(name = "Time since infusion (Months)",breaks = seq(0,10000,by=12)) +
-  guides(fill = guide_legend(title = "Response"), colour = FALSE)  # Hide the legend for arrows
+  guides(fill = guide_legend(title = "Response"), colour = FALSE) +  # Hide the legend for arrows
+  facet_col(vars(Dose_level), scales = "free_y", space = "free")
 
 ```
 
@@ -485,7 +491,7 @@ PFS <- ggsurvplot(km_PFS,
            xlab="Time (months)", ylab = "Progression-free survival",
            xlim = c(0,60), break.x.by = c(12),
            ylim = c(0,1), break.y.by = c(0.25),
-           legend.labs = c("Level 1-3","Level 4"),
+           legend.labs = c("Level 1","Level 2-4"),
            legend = "none",
            surv.scale="percent",
            font.main = c(16, "plain", "black"),
@@ -538,7 +544,7 @@ OS
 km_OS
 
 
-km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC-Time.to.response)/30, relapse.or.death) ~ response.category, data = data1)
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse.or.death) ~ response.category, data = data1)
 
 PFS <- ggsurvplot(km_PFS,
            pval=TRUE,
@@ -548,7 +554,7 @@ PFS <- ggsurvplot(km_PFS,
            risk.table.col = "strata", # Change risk table color by groups
            tables.height = 0.25,
            tables.theme = theme_cleantable(),
-           xlab="Time (months)", ylab = "Duration of response",
+           xlab="Time (months)", ylab = "Progression-free survival",
            xlim = c(0,65), break.x.by = c(12),
            ylim = c(0,1), break.y.by = c(0.25),
            legend.labs = c("sCR/CR","VGPR/PR"),
@@ -563,7 +569,6 @@ PFS <- ggsurvplot(km_PFS,
 
 PFS
 km_PFS
-
 ```
 
 
@@ -1033,6 +1038,69 @@ OS
 km_OS
 ```
 
+## Create KM for OS & PFS, stratified by tumor burden (BMPCs <70 vs >=70)
+```{r, warning=FALSE, message=FALSE}
+km_PFS <- survfit(Surv((Days.to.death.or.relapse.or.DLC)/30, relapse.or.death) ~ Tumor.greater.equal.70, data = dataset)
+med_PFS <- surv_median(km_PFS)
+
+PFS <- ggsurvplot(km_PFS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Progression-free survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("Low","High"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+PFS
+km_PFS
+
+km_OS <- survfit(Surv((Days.to.death.or.DLC)/30, death) ~ Tumor.greater.equal.70, data = dataset)
+med_OS <- surv_median(km_OS)
+
+OS <- ggsurvplot(km_OS,
+           pval=TRUE,
+           conf.int = TRUE,
+           risk.table = TRUE, # Add risk table
+           fontsize = 6,
+           risk.table.col = "strata", # Change risk table color by groups
+           tables.height = 0.25,
+           tables.theme = theme_cleantable(),
+           #surv.median.line = "hv", # Specify median survival
+           #ggtheme = theme_bw(), # Change ggplot2 theme
+           #palette = c("#E7B800", "#2E9FDF"),
+           xlab="Time (months)", ylab = "Overall survival",
+           xlim = c(0,65), break.x.by = c(12),
+           ylim = c(0,1), break.y.by = c(0.25),
+           legend.labs = c("Low","High"),
+           legend = "none",
+           surv.scale="percent",
+           font.main = c(16, "plain", "black"),
+           font.x = c(16, "plain", "black"),
+           font.y = c(16, "plain", "black"),
+           font.caption = c(16, "plain", "black"),
+           font.tickslab = c(16, "plain", "black")
+)
+
+OS
+km_OS
+```
+
 ## Create KM for OS & PFS, stratified by sBCMA at day 90 (< vs >= median)
 ```{r, warning=FALSE, message=FALSE}
 data1 <- dataset %>%
@@ -1254,7 +1322,7 @@ km_OS
 ## Cox regression
 ```{r}
 theme_gtsummary_compact()
-preds <- c("HRCA", "cnLOH", "response.category", "intended_cell_dose", "High.tumor.burden","any_bcma_tx","pentaref","triple_ref","bcma_scrn", "sBCMA.d90", "sBCMA.d60", "sbcma_nadir","sbcma_nadir_timepoint")
+preds <- c("HRCA", "cnLOH", "response.category", "intended_cell_dose", "High.tumor.burden","any_bcma_tx","pentaref","triple_ref","bcma_scrn", "sBCMA.d90", "sBCMA.d60", "sbcma_nadir","sbcma_nadir_timepoint", "Tumor.burden")
 
 data1 <- dataset %>%
   mutate(
@@ -1321,11 +1389,11 @@ options(datadist='dd')
 
 
 
-fit1 <- cph(Surv(data1$Days.to.death.or.DLC, data1$death) ~ sBCMA.d90, data=data1)
+fit1 <- cph(Surv(data1$Days.to.death.or.DLC, data1$death) ~ rcs(sBCMA.d90,3), data=data1)
 df1 <- data.frame(Predict(fit1, sBCMA.d90, fun=function(x) exp(x) ) )
 
 
-fit2 <- cph(Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse.or.death) ~ sBCMA.d90, data=data1)
+fit2 <- cph(Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse.or.death) ~ rcs(sBCMA.d90,3), data=data1)
 df2 <- data.frame(Predict(fit2, sBCMA.d90, fun=function(x) exp(x) ) )
 
 ggplot() + 
@@ -1335,6 +1403,36 @@ ggplot() +
        y = "Hazard")+
   theme_classic() +
   scale_y_continuous(breaks=c(1,2,3,4,5,6,7,8, 9)) + 
+  #scale_x_continuous(breaks=c(0.25,0.5,0.75,1.0,1.25,1.5,1.75), limits=c(0.25, 1.75)) + 
+  theme(legend.position = c(0, 1),legend.justification = c(-7.5, 1.1))+
+  scale_color_manual(values = c ("steelblue","coral2")) + 
+  theme(title = element_text(size=20,face="bold"),legend.title=element_blank())
+```
+
+## Hazard of OS/PFS vs tumor burden (BMPCs)
+```{r}
+data1 <- dataset %>%
+  select(Tumor.burden, Days.to.death.or.DLC, death, Days.to.death.or.relapse.or.DLC, relapse.or.death)
+
+dd <- datadist(data1)
+options(datadist='dd')
+
+
+
+fit1 <- cph(Surv(data1$Days.to.death.or.DLC, data1$death) ~ Tumor.burden, data=data1)
+df1 <- data.frame(Predict(fit1, Tumor.burden, fun=function(x) exp(x) ) )
+
+
+fit2 <- cph(Surv(data1$Days.to.death.or.relapse.or.DLC, data1$relapse.or.death) ~ Tumor.burden, data=data1)
+df2 <- data.frame(Predict(fit2, Tumor.burden, fun=function(x) exp(x) ) )
+
+ggplot() + 
+  geom_line(data=df1, aes(x=Tumor.burden,y=yhat, color = "OS")) + geom_ribbon( data=df1, aes(x=Tumor.burden,ymin=lower, ymax=upper),alpha=0.10)+
+  geom_line(data=df2, aes(x=Tumor.burden,y=yhat, color ="PFS" )) + geom_ribbon(data = df2, aes(x=Tumor.burden,ymin=lower, ymax=upper),alpha=0.10)+
+  labs(x = "Tumor burden (BMPCs)",
+       y = "Hazard")+
+  theme_classic() +
+  scale_y_continuous(breaks=c(10, 20, 30, 40, 50, 60, 70, 80 ,90,100)) + 
   #scale_x_continuous(breaks=c(0.25,0.5,0.75,1.0,1.25,1.5,1.75), limits=c(0.25, 1.75)) + 
   theme(legend.position = c(0, 1),legend.justification = c(-7.5, 1.1))+
   scale_color_manual(values = c ("steelblue","coral2")) + 
